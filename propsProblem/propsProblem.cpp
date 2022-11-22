@@ -100,9 +100,12 @@ public:
 
     template<class T>
     std::optional<T> get() {
-      return std::nullopt;
+        T* returnobj = static_cast<T*>((this)->getObj());
+        return *returnobj;
     }
 
+    virtual void* getObj() = 0;
+    
 };
 
 template<class T>
@@ -119,10 +122,9 @@ public:
         mObj = obj;
     }
 
-    template <class T>
-    std::optional<T> get()
+    void* getObj()
     {
-        return mObj;
+        return &mObj;
     }
 
 
@@ -185,12 +187,12 @@ public:
     template <class IdType, class ValueType>
     void set(IdType const& id, ValueType&& value)
     {
-        std::shared_ptr<Property <ValueType>> newprop = (std::make_shared<Property<ValueType>>(Property<ValueType>(value)));
+        std::unique_ptr<Property <ValueType>> newprop = (std::make_unique<Property<ValueType>>(Property<ValueType>(value)));
 
         if constexpr (std::is_enum<IdType>::value)
         {
             size_t hash = std::hash<size_t>  {}(static_cast<std::size_t>(id));
-            mProperties.insert({ hash, newprop });
+            mProperties.insert({ hash, std::move(newprop) });
         }
         else if constexpr(std::is_trivial<IdType>::value)
         {
@@ -213,7 +215,7 @@ public:
             auto res = mProperties.find(std::hash<size_t> {} (static_cast<std::size_t>(id)));
             if (res != mProperties.end())
             {
-                return ( * (res->second.get())).get<ValueType>().value();
+                return ( res->second.get())->get<ValueType>();
             }
             return std::nullopt;
         }
@@ -222,7 +224,7 @@ public:
             auto res = mProperties.find(std::hash<size_t> {} (std::hash(id)));
             if (res != mProperties.end())
             {
-                return (*(res->second.get())).get<ValueType>().value();
+                return ((res->second.get()))->get<ValueType>();
             }
             return std::nullopt;
         }
@@ -232,7 +234,7 @@ public:
             auto res = mProperties.find(std::hash<size_t> {} (idSize));
             if (res != mProperties.end())
             {
-                return (*(res->second.get())).get<ValueType>().value();
+                return ((res->second.get()))->get<ValueType>();
             }
             return std::nullopt;
         }
@@ -250,7 +252,7 @@ public:
     }
 
 private:
-    std::unordered_map<size_t, std::shared_ptr<BaseProperty>> mProperties = {};
+    std::unordered_map<size_t, std::unique_ptr<BaseProperty>> mProperties = {};
 };
 
 class Entity
@@ -284,10 +286,11 @@ int main()
     e.properties().set(BuildingPropertyId::BuildingType, BuildingType::TownCenter);
     e.properties().set(BuildingPropertyId::Bounds, Bounds{ 0, 0, 2, 2 });
 
-    //auto buildingTypeA = e.properties().get<BuildingType>(BuildingPropertyId::BuildingType);
+    auto buildingTypeA = e.properties().get<BuildingPropertyId, Bounds>(BuildingPropertyId::BuildingType); //should throw an error or crash, we're trying to get bounds from buildingtype
     auto buildingTypeB = e.properties().get(BuildingPropertyId::BuildingType, BuildingType::Invalid);
     auto buildingTypeC = e.properties().get(BuildingPropertyId::BuildingType, 0); // throw a runtime assert because Id::BuildingType is not of type integer (debug only; in release builds it should just return the specificed fallback value)
     auto extraScenario = e.properties().get(BuildingPropertyId::Invalid, 0); // we don't have that property; assert in debug, return fallback in release
 
+    std::cout << "No Problems!" << std::endl;
     return 0;
 }
